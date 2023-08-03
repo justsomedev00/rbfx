@@ -1577,6 +1577,44 @@ void IKStickTargets::DrawDebugGeometry(DebugRenderer* debug, bool depthTest)
 {
 }
 
+unsigned IKStickTargets::GetNumRecoveringTargets() const
+{
+    unsigned count = 0;
+    for (const TargetInfo& target : targets_)
+        count += (target.state_ == TargetState::Recovering) ? 1 : 0;
+    return count;
+}
+
+unsigned IKStickTargets::GetNumStuckTargets() const
+{
+    unsigned count = 0;
+    for (const TargetInfo& target : targets_)
+        count += (target.state_ == TargetState::Stuck) ? 1 : 0;
+    return count;
+}
+
+ea::fixed_vector<Node*, IKStickTargets::MaxTargets> IKStickTargets::GetRecoveringTargets() const
+{
+    ea::fixed_vector<Node*, IKStickTargets::MaxTargets> result;
+    for (const TargetInfo& target : targets_)
+    {
+        if (target.state_ == TargetState::Recovering)
+            result.push_back(target.node_.Get());
+    }
+    return result;
+}
+
+ea::fixed_vector<Node*, IKStickTargets::MaxTargets> IKStickTargets::GetStuckTargets() const
+{
+    ea::fixed_vector<Node*, IKStickTargets::MaxTargets> result;
+    for (const TargetInfo& target : targets_)
+    {
+        if (target.state_ == TargetState::Stuck)
+            result.push_back(target.node_.Get());
+    }
+    return result;
+}
+
 bool IKStickTargets::InitializeNodes(IKNodeCache& nodeCache)
 {
     ea::vector<TargetInfo> targets;
@@ -1701,9 +1739,14 @@ void IKStickTargets::UpdateRecovery()
 
         TargetInfo& info = targets_[(i + startIndex) % numTargets];
 
-        const bool isPositionExpired = info.GetStuckPositionError() > positionThreshold_;
-        const bool isRotationExpired = info.GetStuckRotationError() > rotationThreshold_;
-        const bool isTimedOut = timeThreshold_ > 0.0f && info.GetStuckTime() > timeThreshold_;
+        const float timeoutThresholdScale = 0.1f;
+        const float positionError = info.GetStuckPositionError();
+        const float rotationError = info.GetStuckRotationError();
+        const bool isPositionExpired = positionError > positionThreshold_;
+        const bool isRotationExpired = rotationError > rotationThreshold_;
+        const bool isTimedOut = timeThreshold_ > 0.0f && info.GetStuckTime() > timeThreshold_
+            && positionError > positionThreshold_ * timeoutThresholdScale
+            && rotationError > rotationThreshold_ * timeoutThresholdScale;
 
         if (isPositionExpired || isRotationExpired || isTimedOut)
         {

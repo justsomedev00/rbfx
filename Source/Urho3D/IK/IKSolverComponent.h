@@ -27,6 +27,8 @@
 #include "../Math/Transform.h"
 #include "../Scene/Component.h"
 
+#include <EASTL/fixed_vector.h>
+
 namespace Urho3D
 {
 
@@ -647,12 +649,18 @@ public:
     static constexpr float DefaultRotationThreshold = 45.0f;
     static constexpr float DefaultTimeThreshold = 0.8f;
     static constexpr float DefaultRecoverTime = 0.2f;
+    static constexpr unsigned MaxTargets = 8;
 
     explicit IKStickTargets(Context* context);
     ~IKStickTargets() override;
     static void RegisterObject(Context* context);
 
     void DrawDebugGeometry(DebugRenderer* debug, bool depthTest) override;
+
+    unsigned GetNumRecoveringTargets() const;
+    unsigned GetNumStuckTargets() const;
+    ea::fixed_vector<Node*, MaxTargets> GetRecoveringTargets() const;
+    ea::fixed_vector<Node*, MaxTargets> GetStuckTargets() const;
 
     /// Attributes.
     /// @{
