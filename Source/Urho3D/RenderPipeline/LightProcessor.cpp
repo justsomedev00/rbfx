@@ -456,11 +456,16 @@ void LightProcessor::CookShaderParameters(Camera* cullCamera, const DrawableProc
         // Calculate shadow camera depth parameters for point light shadows and shadow fade parameters for
         //  directional light shadows, stored in the same uniform
         Camera* shadowCamera = splits_[0].GetShadowCamera();
+
         const float nearClip = shadowCamera->GetNearClip();
         const float farClip = shadowCamera->GetFarClip();
-        const float q = farClip / (farClip - nearClip);
-        const float r = -q * nearClip;
 
+        Matrix4 projection = shadowCamera->GetProjection();
+        shadowCamera->GetGPUDepthParams().ConvertForwardDepth(projection, nearClip, farClip);
+        const float q = projection.m22_;
+        const float r = projection.m23_;
+
+                
         const CascadeParameters& parameters = light_->GetShadowCascade();
         const float viewFarClip = cullCamera->GetFarClip();
         const float shadowRange = parameters.GetShadowRange();

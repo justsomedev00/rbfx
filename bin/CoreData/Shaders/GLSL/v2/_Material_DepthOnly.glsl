@@ -66,10 +66,13 @@ void Vertex_SetTransform(VertexTransform vertexTransform)
     void _CopyDepthToColor(vec2 depthW)
     {
         float depth = depthW.x / depthW.y;
-        #ifdef URHO3D_OPENGL
+        #if defined(URHO3D_OPENGL) && !defined(URHO3D_REVERSED_DEPTH)
             // Remap from [-1, 1] to [0, 1] for OpenGL
             depth = depth * 0.5 + 0.5;
         #endif
+
+        // Store VSM in forward depth range rather than hardware depth 
+        depth = HwDepthToForwardDepth(depth);
         gl_FragColor = vec4(depth, depth * depth, 1.0, 1.0);
     }
 #else

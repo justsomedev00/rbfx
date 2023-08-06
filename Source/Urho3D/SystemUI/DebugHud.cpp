@@ -169,7 +169,7 @@ void DebugHud::RenderUI(DebugHudModeFlags mode)
         ui::SetCursorPosX(left_offset);
         ui::Text("Animations %u(%u)", stats.animations_, numChangedAnimations_[0]);
         ui::SetCursorPosX(left_offset);
-
+        
         for (auto i = appStats_.begin(); i != appStats_.end(); ++i)
         {
             ui::Text("%s %s", i->first.c_str(), i->second.c_str());
@@ -183,8 +183,9 @@ void DebugHud::RenderUI(DebugHudModeFlags mode)
         const ImGuiStyle& style = ui::GetStyle();
         const ImGuiContext& g = *ui::GetCurrentContext();
         ui::SetCursorPos({style.WindowPadding.x, ui::GetWindowSize().y - ui::GetStyle().WindowPadding.y - g.Font->FontSize});
-        ui::Text("API:%s | Tex:%s | Filter:%s",
+        ui::Text("API:%s | DepthMode:%s | Tex:%s | Filter:%s",
             graphics->GetApiName().c_str(),
+            renderDevice->GetDepthParams().reversed_ ? "Reversed" : "Forward",
             qualityTexts[renderer->GetTextureQuality()],
             filterModeTexts[renderer->GetTextureFilterMode()]);
     }

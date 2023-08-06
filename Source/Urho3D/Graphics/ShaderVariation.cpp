@@ -30,6 +30,7 @@
 #include "Urho3D/IO/Log.h"
 #include "Urho3D/IO/VirtualFileSystem.h"
 #include "Urho3D/RenderAPI/RenderAPIUtils.h"
+#include "Urho3D/RenderAPI/RenderDevice.h"
 #include "Urho3D/Shader/ShaderCompiler.h"
 #include "Urho3D/Shader/ShaderOptimizer.h"
 #include "Urho3D/Shader/ShaderSourceLogger.h"
@@ -244,11 +245,22 @@ void ShaderVariation::SaveByteCode(const FileIdentifier& binaryShaderName)
 
 ea::string ShaderVariation::GetCachedVariationName(ea::string_view extension) const
 {
+    static const unsigned int reversedDepthHash = StringHash::Calculate("REVERSED_DEPTH");
+
     const ea::string backendName = ToString(graphics_->GetRenderBackend()).to_lower();
     const ea::string shortName = owner_->GetShaderName();
     const ea::string shaderTypeName = ToString(GetShaderType()).to_lower();
-    const StringHash definesHash{defines_};
-    return Format("{}_{}_{}_{}.{}", shortName, shaderTypeName, definesHash.ToString(), backendName, extension);
+    const StringHash definesHash{ defines_ };
+
+    // Initial hash code
+    StringHash hashCode = definesHash;
+
+    // Apply hash modifier to distinguish depth modes
+    if (renderDevice_->GetDepthParams().reversed_) {
+        CombineHash(hashCode.MutableValue(), reversedDepthHash);
+    } 
+
+    return Format("{}_{}_{}_{}.{}", shortName, shaderTypeName, hashCode.ToString(), backendName, extension);
 }
 
 bool ShaderVariation::NeedShaderTranslation() const
@@ -306,6 +318,11 @@ ea::string ShaderVariation::PrepareGLSLShaderCode(const ea::string& originalShad
     shaderCode += shaderTypeDefines[GetShaderType()];
 
     shaderCode += Format("#define URHO3D_{}\n", ToString(renderBackend).to_upper());
+
+    // Add reversed depth define
+    if (renderDevice_->GetDepthParams().reversed_) {
+        shaderCode += "#define URHO3D_REVERSED_DEPTH\n";
+    }
 
     // Prepend the defines to the shader code
     const StringVector defineVec = defines_.split(' ');

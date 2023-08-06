@@ -28,6 +28,7 @@
 #include "../Graphics/Drawable.h"
 #include "../Graphics/Graphics.h"
 #include "../Graphics/Zone.h"
+#include "../RenderAPI/RenderDevice.h"
 #include "../Scene/Node.h"
 
 #include "../DebugNew.h"
@@ -73,7 +74,13 @@ Camera::Camera(Context* context) :
     useClipping_(false)
 {
     reflectionMatrix_ = reflectionPlane_.ReflectionMatrix();
+
     graphics_ = GetSubsystem<Graphics>();
+
+    // Cache depth settings
+    if (RenderDevice* device = GetSubsystem<RenderDevice>()) {
+        gpuDepthParams_ = device->GetDepthParams();
+    }
 }
 
 Camera::~Camera() = default;
@@ -467,8 +474,7 @@ Matrix4 Camera::GetGPUProjection(bool ignoreFlip) const
 {
     Matrix4 ret = GetProjection(ignoreFlip);
 
-    const bool isOpenGL = graphics_ && graphics_->GetRenderBackend() == RenderBackend::OpenGL;
-    if (isOpenGL)
+    if (!gpuDepthParams_.zNdcZeroToOne_)
     {
         ret.m20_ = 2.0f * ret.m20_ - ret.m30_;
         ret.m21_ = 2.0f * ret.m21_ - ret.m31_;
@@ -476,6 +482,7 @@ Matrix4 Camera::GetGPUProjection(bool ignoreFlip) const
         ret.m23_ = 2.0f * ret.m23_ - ret.m33_;
     }
 
+    gpuDepthParams_.ConvertForwardDepth(ret, nearClip_, farClip_);
     return ret;
 }
 
@@ -483,11 +490,13 @@ Matrix4 Camera::GetEffectiveGPUViewProjection(float constantDepthBias) const
 {
     Matrix4 projection = GetGPUProjection();
 
-    // OpenGL depth offset is weird, emulate it here.
-    const bool isOpenGL = graphics_ && graphics_->GetRenderBackend() == RenderBackend::OpenGL;
-    if (isOpenGL)
+    if (!gpuDepthParams_.useHwConstantDepthBias_)
     {
-        const float constantBias = 2.0f * constantDepthBias;
+        // Emulate constant bias.
+        float constantBias = constantDepthBias * gpuDepthParams_.hwZNdcScale_;
+        if (gpuDepthParams_.reversed_) {
+            constantBias *= -1.0f;
+        }
         projection.m22_ += projection.m32_ * constantBias;
         projection.m23_ += projection.m33_ * constantBias;
     }

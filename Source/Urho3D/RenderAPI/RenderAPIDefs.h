@@ -177,6 +177,21 @@ struct URHO3D_API RenderDeviceSettings
     void* externalWindowHandle_{};
     /// Whether to enable debug mode on GPU if possible.
     bool gpuDebug_{};
+
+    /// Whether to use reversed depth range for rendering for improved depth precision.
+    /// Changes depth value range such that "1.0" is at near plane and "0.0" is at far plane.
+    ///
+    /// NOTE: Forces [0-1] Z NDC range on OpenGL (see: glClipControl()) since you won't see
+    /// any depth precision improvements if the NDC range is kept at [-1,1]
+    ///
+    bool reversedDepth_{};
+
+    /// Whether to prefer floating-point depth  formats, this defaults to "true" for
+    /// reversed depth and "false" for forward depth modes. The preferred format can be
+    /// explicitly set through the engine parameters.
+    /// 
+    bool preferFloatDepth_{};
+
     /// Adapter ID.
     ea::optional<unsigned> adapterId_;
 
@@ -446,6 +461,7 @@ enum ClearTarget : unsigned
 };
 URHO3D_FLAGSET(ClearTarget, ClearTargetFlags);
 
+
 /// Description of immutable texture sampler bound to the pipeline.
 struct URHO3D_API SamplerStateDesc
 {
@@ -656,5 +672,105 @@ enum class PipelineStateType
 };
 
 using RawVertexBufferArray = ea::array<RawBuffer*, MaxVertexStreams>;
+
+
+/// Hardware depth mode description parameters. Describes the current
+/// depth mode setting of the RenderDevice and how to convert from
+/// conventional forward [0-1] depth range to the hardware depth
+/// range of the RenderDevice
+struct URHO3D_API RenderDepthParams
+{ 
+    /// Is the depth range reversed. Reversed depth range can dramatically
+    /// improve depth precision when used in combination with floating-point
+    /// depth formats.
+    /// 
+    /// Note: Reversed depth range implies a [0-1] Z clip interval, even
+    /// when using OpenGL backend
+    /// 
+    bool reversed_{ false };
+    /// Is the Z NDC interval [0,1], the default clip interval
+    /// in all GAPI's except OpenGL. If reversed depth mode is used then
+    /// OpenGL Z NDC range is forced to [0,1]
+    bool zNdcZeroToOne_{ true };
+    /// Should hardware constant depth bias be used, under OpenGL and
+    /// reversed depth, constant depth bias is applied through projection
+    /// matrix for consistency with other GAPI's and forward depth
+    bool useHwConstantDepthBias_ = true;
+    /// Scale to apply to conventional [0-1] Z NDC values to convert to
+    /// the required GPU NDC value
+    float hwZNdcScale_ = 1.0f;
+    /// Offset to apply to conventional [0-1] Z NDC values to convert to
+    /// the required GPU NDC value
+    float hwZNdcOffset_ = 0.0f;
+    /// Scaling to apply to conventional forward depth [0-1] values to transform
+    /// a forward depth value to a hardware depth value
+    float hwDepthScale_ = 1.0f;
+    /// Offset value to apply to conventional forward depth to transform
+    /// a forward depth value to a hardware depth value
+    float hwDepthOffset_ = 0.0f;
+
+    /// Given a depth comparison mode for forward, conventional depth, return
+    /// the appropriate comparison mode to be supplied to the render device
+    /// for the depth mode settings
+    CompareMode GetDepthCompare(CompareMode forwardMode) const
+    {
+        if (reversed_)
+        {
+            switch (forwardMode)
+            {
+                case CMP_LESS:
+                    return CMP_GREATER;
+                case CMP_LESSEQUAL:
+                    return CMP_GREATEREQUAL;
+                case CMP_GREATER:
+                    return CMP_LESS;
+                case CMP_GREATEREQUAL:
+                    return CMP_LESSEQUAL;
+            }
+        }
+        return forwardMode;
+    }
+
+    /// Given a conventional [0-1] Z NDC value, returns the equivalent value for the
+    /// device depth mode settings
+    float GetNdcZ(float zNdcValue) const
+    {
+        return hwZNdcScale_ * zNdcValue + hwZNdcOffset_;
+    }
+
+    /// Given a conventional forward depth value, returns the equivalent value for the
+    /// depth mode settings
+    float GetDepth(float depthValue) const
+    {
+        return hwDepthScale_ * depthValue + hwDepthOffset_;
+    }
+
+    /// Given a conventional forward depth projection matrix, converts the matrix to the equivalent
+    /// projection matrix for the depth settings 
+    void ConvertForwardDepth(Matrix4& projection, float nearClip, float farClip) const
+    {
+        // If not reversed, then don't need to reverse the depth parameters
+        if (!reversed_)
+            return;
+
+        bool orthographic = projection.m32_ == 0.0;
+        if (!orthographic)
+        {
+            const float q = nearClip / (nearClip - farClip);
+            const float r = -q * farClip;
+            projection.m22_ = q;
+            projection.m23_ = r;
+        }
+        else
+        {
+            const float q = -1.0f / farClip;
+            const float r = 1.0f;
+            projection.m22_ = q;
+            projection.m23_ = r;
+        }
+    }
+
+};
+
 
 } // namespace Urho3D

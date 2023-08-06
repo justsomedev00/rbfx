@@ -114,6 +114,8 @@ public:
     bool IsMultiSampleSupported(TextureFormat format, int multiSample) const;
     /// Select supported multi-sample level for given format.
     int GetSupportedMultiSample(TextureFormat format, int multiSample) const;
+    /// Get the depth settings for the render device
+    const RenderDepthParams& GetDepthParams() const { return depthParams_; }
 
     /// Getters.
     /// @{
@@ -219,6 +221,7 @@ private:
     RenderDeviceStats stats_;
     RenderDeviceStats maxStats_;
     RenderDeviceStats prevMaxStats_;
+    RenderDepthParams depthParams_;
 
     // Keep aliases at the end to ensure they are destroyed first and don't affect real order of destruction.
 #if D3D11_SUPPORTED

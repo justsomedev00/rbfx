@@ -975,6 +975,8 @@ void UI::Render(VertexBuffer* buffer, const ea::vector<UIBatch>& batches, unsign
     projection.m23_ = 0.0f;
     projection.m33_ = 1.0f;
 
+    renderDevice->GetDepthParams().ConvertForwardDepth(projection, 0.0f, 1.0f);
+
     drawQueue->Reset();
 
     const float elapsedTime = GetSubsystem<Time>()->GetElapsedTime();

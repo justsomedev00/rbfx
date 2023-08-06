@@ -118,10 +118,23 @@
     #define URHO3D_FEATURE_FRAMEBUFFER_Y_INVERTED
 #endif
 
+
 /// =================================== Precision ===================================
 
 #ifdef GL_ES
     precision highp float;
+#endif
+
+/// =================================== Depth Mode ===================================
+
+// Macros for converting between a hardware depth value (e.g. read from a depth texture)
+// and conventional forward depth values
+#ifdef URHO3D_REVERSED_DEPTH
+    #define HwDepthToForwardDepth(depth)    (1.0 - depth)
+    #define ForwardDepthToHwDepth(depth)    (1.0 - depth)
+#else
+    #define HwDepthToForwardDepth(depth)    (depth)
+    #define ForwardDepthToHwDepth(depth)    (depth)
 #endif
 
 /// =================================== Global functions ===================================

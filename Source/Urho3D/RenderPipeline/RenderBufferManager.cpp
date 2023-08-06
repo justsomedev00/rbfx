@@ -300,10 +300,10 @@ void RenderBufferManager::ClearOutputRect(const IntRect& viewportRect, ClearTarg
     }
     else
     {
-        const bool isOpenGL = renderContext_->GetRenderDevice()->GetBackend() == RenderBackend::OpenGL;
+        float hwDepth = renderContext_->GetRenderDevice()->GetDepthParams().GetDepth(depth);
         const ShaderParameterDesc params[] = {
             {"Color", color},
-            {"Depth", isOpenGL ? (depth * 2.0 - 1.0) : depth},
+            {"Depth", hwDepth},
         };
         DrawViewportQuad("Clear output subregion", clearPipelineState_[flags.AsInteger()], {}, params);
     }
@@ -373,9 +373,8 @@ void RenderBufferManager::DrawQuad(ea::string_view debugComment, const DrawQuadP
     if (flipVertical)
         projection.m11_ = -1.0f;
 
-    // OpenGL z range is [-1, 1] instead of [0, 1], draw quad at z = 0.5 for consistency
-    const bool isOpenGL = renderDevice_->GetBackend() == RenderBackend::OpenGL;
-    modelMatrix.m23_ = isOpenGL ? 0.0f : 0.5f;
+    // draw quad at z = 0.5 depth for consistency
+    modelMatrix.m23_ = renderDevice_->GetDepthParams().GetNdcZ(0.5f);
 
     drawQueue_->Reset();
     drawQueue_->SetPipelineState(pipelineState);

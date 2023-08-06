@@ -150,6 +150,9 @@ void RmlRenderer::BeginRendering()
     projection_.m22_ = 1.0f / farClip_;
     projection_.m23_ = 0.0f;
     projection_.m33_ = 1.0f;
+
+    // Apply depth mode settings
+    renderDevice->GetDepthParams().ConvertForwardDepth(projection_, 0, farClip_);
 }
 
 void RmlRenderer::EndRendering()

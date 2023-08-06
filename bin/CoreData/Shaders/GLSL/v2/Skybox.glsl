@@ -27,14 +27,19 @@ void main()
     vec4 worldPos = vec4(iPos.xyz, 0.0) * modelMatrix;
     worldPos.xyz += STEREO_VAR(cCameraPos).xyz;
     worldPos.w = 1.0;
-
     gl_Position = WorldToClipSpace(worldPos.xyz);
-    gl_Position.z = gl_Position.w;
-    vTexCoord = iPos.xyz;
 
-    #ifdef URHO3D_XR
-        vInstID = gl_InstanceID;
-    #endif
+#ifdef URHO3D_REVERSED_DEPTH
+    gl_Position.z = 0;
+#else
+    gl_Position.z = gl_Position.w;
+#endif
+
+    vTexCoord = iPos.xyz;
+#ifdef URHO3D_XR
+    vInstID = gl_InstanceID;
+#endif
+
 }
 #endif
 

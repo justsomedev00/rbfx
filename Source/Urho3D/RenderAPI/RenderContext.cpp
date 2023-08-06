@@ -126,13 +126,16 @@ void RenderContext::ClearDepthStencil(ClearTargetFlags flags, float depth, unsig
         return;
     }
 
+    // account for reversed depth range and depth parameters
+    float hwDepth = renderDevice_->GetDepthParams().GetDepth(depth);
+
     Diligent::CLEAR_DEPTH_STENCIL_FLAGS internalFlags{};
     if (flags.Test(CLEAR_DEPTH))
         internalFlags |= Diligent::CLEAR_DEPTH_FLAG;
     if (flags.Test(CLEAR_STENCIL) && IsDepthStencilTextureFormat(currentDepthStencil_->GetTexture()->GetDesc().Format))
         internalFlags |= Diligent::CLEAR_STENCIL_FLAG;
     handle_->ClearDepthStencil(
-        currentDepthStencil_, internalFlags, depth, stencil, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        currentDepthStencil_, internalFlags, hwDepth, stencil, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
 void RenderContext::ClearRenderTarget(unsigned index, const Color& color)

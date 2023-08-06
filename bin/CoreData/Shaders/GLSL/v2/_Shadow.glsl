@@ -71,6 +71,12 @@ vec3 DirectionToUV(vec3 vec, vec2 bias)
     /// Calculate shadow value from sampled VSM texture and fragment depth
     half EvaluateVarianceShadow(vec2 moments, float depth)
     {
+        // Account for depth mode setting, incoming "depth" is directly from
+        // clip space but VSM shadow maps are always stored in forward depth
+        // as the Chebyshev inequality used for VSM filtering defines an 
+        // upper bound on the >= relationship  
+        depth = HwDepthToForwardDepth(depth);
+
         float p = float(depth <= moments.x);
         float variance = moments.y - (moments.x * moments.x);
 

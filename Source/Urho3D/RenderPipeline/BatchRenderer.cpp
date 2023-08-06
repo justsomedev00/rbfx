@@ -54,22 +54,27 @@ namespace
 {
 
 /// Return shader parameter for camera depth mode.
-Vector4 GetCameraDepthModeParameter(const Camera& camera, RenderBackend backend)
+Vector4 GetCameraDepthModeParameter(const Camera& camera)
 {
     Vector4 depthMode = Vector4::ZERO;
     if (camera.IsOrthographic())
     {
         depthMode.x_ = 1.0f;
-        if (backend == RenderBackend::OpenGL)
+        if (camera.GetGPUDepthParams().reversed_)
         {
-            depthMode.z_ = 0.5f;
-            depthMode.w_ = 0.5f;
+            depthMode.z_ = -1.0f;
+            depthMode.w_ = 1.0f;
         }
-        else
+        else if (camera.GetGPUDepthParams().zNdcZeroToOne_)
         {
             depthMode.z_ = 1.0f;
             depthMode.w_ = 0.0f;
         }
+        else
+        {
+            depthMode.z_ = 0.5f;
+            depthMode.w_ = 0.5f;
+        }   
     }
     else
     {
@@ -556,7 +561,7 @@ private:
             const Vector4 cameraPosition[2] = {{cameraTransform[0].Translation(), 0.0f}, {cameraTransform[1].Translation(), 0.0f}};
             const Matrix4 cameraView[2] = {cameras[0]->GetView().ToMatrix4(), cameras[1]->GetView().ToMatrix4()};
             const Matrix4 cameraViewProj[2] = {cameras[0]->GetEffectiveGPUViewProjection(constantDepthBias), cameras[1]->GetEffectiveGPUViewProjection(constantDepthBias)};
-            const Vector4 depthModes[2] = {GetCameraDepthModeParameter(*cameras[0], backend_), GetCameraDepthModeParameter(*cameras[1], backend_)};
+            const Vector4 depthModes[2] = {GetCameraDepthModeParameter(*cameras[0]), GetCameraDepthModeParameter(*cameras[1])};
             const Vector4 depthReconstructions[2] = {GetCameraDepthReconstructParameter(*cameras[0]), GetCameraDepthReconstructParameter(*cameras[1])};
             // clang-format on
 
@@ -584,7 +589,7 @@ private:
             drawQueue_.AddShaderParameter(ShaderConsts::Camera_ViewInv, cameraTransform);
             drawQueue_.AddShaderParameter(ShaderConsts::Camera_View, camera_.GetView());
 
-            drawQueue_.AddShaderParameter(ShaderConsts::Camera_DepthMode, GetCameraDepthModeParameter(camera_, backend_));
+            drawQueue_.AddShaderParameter(ShaderConsts::Camera_DepthMode, GetCameraDepthModeParameter(camera_));
             drawQueue_.AddShaderParameter(ShaderConsts::Camera_DepthReconstruct, GetCameraDepthReconstructParameter(camera_));
 
             Vector3 nearVector, farVector;

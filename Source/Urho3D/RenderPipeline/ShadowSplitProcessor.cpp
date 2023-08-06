@@ -343,13 +343,18 @@ Matrix4 ShadowSplitProcessor::GetWorldToShadowSpaceMatrix(float subPixelOffset) 
     // Apply GAPI-specific transforms
     if (renderBackend_ == RenderBackend::OpenGL)
     {
-        offset.z_ = 0.5f;
-        scale.z_ = 0.5f;
         offset.y_ = 1.0f - offset.y_;
     }
     else
     {
         scale.y_ = -scale.y_;
+    }
+
+    // Apply depth transform for [-1,1] NDC range
+    if (!shadowCamera_->GetGPUDepthParams().zNdcZeroToOne_)
+    {
+        offset.z_ = 0.5f;
+        scale.z_ = 0.5f;
     }
 
     // Apply sub-pixel offset if necessary

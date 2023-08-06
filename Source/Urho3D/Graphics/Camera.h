@@ -185,6 +185,11 @@ public:
     /// @property
     bool IsOrthographic() const { return orthographic_; }
 
+    /// Get hardware depth parameters
+    const RenderDepthParams& GetGPUDepthParams() const { return gpuDepthParams_; }
+    /// Override hardware depth parameters
+    void SetGPUDepthParams(const RenderDepthParams& params) { gpuDepthParams_ = params; }
+
     /// Return auto aspect ratio flag.
     /// @property
     bool GetAutoAspectRatio() const { return autoAspectRatio_; }
@@ -388,6 +393,8 @@ private:
     bool useReflection_;
     /// Use custom clip plane flag.
     bool useClipping_;
+    /// Cached GPU depth params
+    RenderDepthParams gpuDepthParams_;
     /// Whether to draw debug geometry when rendering from this camera.
     bool drawDebugGeometry_{true};
 

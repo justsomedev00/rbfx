@@ -26,6 +26,21 @@ namespace Urho3D
 namespace
 {
 
+Diligent::COMPARISON_FUNCTION GetComparisonFunction(CompareMode mode)
+{
+    static const Diligent::COMPARISON_FUNCTION comparisonFunction[] = {
+        Diligent::COMPARISON_FUNC_ALWAYS, // CMP_ALWAYS
+        Diligent::COMPARISON_FUNC_EQUAL, // CMP_EQUAL
+        Diligent::COMPARISON_FUNC_NOT_EQUAL, // CMP_NOTEQUAL
+        Diligent::COMPARISON_FUNC_LESS, // CMP_LESS
+        Diligent::COMPARISON_FUNC_LESS_EQUAL, // CMP_LESSEQUAL
+        Diligent::COMPARISON_FUNC_GREATER, // CMP_GREATER
+        Diligent::COMPARISON_FUNC_GREATER_EQUAL // CMP_GREATEREQUAL
+    };
+
+    return comparisonFunction[mode];
+}
+
 void InitializeLayoutElementsMetadata(
     ea::vector<Diligent::LayoutElement>& result, ea::span<const InputLayoutElementDesc> vertexElements)
 {
@@ -118,7 +133,7 @@ void InitializeImmutableSampler(Diligent::ImmutableSamplerDesc& destSampler, con
     destSampler.Desc.AddressV = addressMode[sourceSampler.addressMode_[TextureCoordinate::V]];
     destSampler.Desc.AddressW = addressMode[sourceSampler.addressMode_[TextureCoordinate::W]];
     destSampler.Desc.MaxAnisotropy = anisotropy;
-    destSampler.Desc.ComparisonFunc = Diligent::COMPARISON_FUNC_LESS_EQUAL;
+    destSampler.Desc.ComparisonFunc = GetComparisonFunction(renderDevice->GetDepthParams().GetDepthCompare(CMP_LESSEQUAL));
     destSampler.Desc.MinLOD = -M_INFINITY;
     destSampler.Desc.MaxLOD = M_INFINITY;
 }
@@ -408,16 +423,6 @@ void PipelineState::CreateGPU(const GraphicsPipelineStateDesc& desc)
         Diligent::PRIMITIVE_TOPOLOGY_UNDEFINED // TRIANGLE_FAN (not supported)
     };
 
-    static const Diligent::COMPARISON_FUNCTION comparisonFunction[] = {
-        Diligent::COMPARISON_FUNC_ALWAYS, // CMP_ALWAYS
-        Diligent::COMPARISON_FUNC_EQUAL, // CMP_EQUAL
-        Diligent::COMPARISON_FUNC_NOT_EQUAL, // CMP_NOTEQUAL
-        Diligent::COMPARISON_FUNC_LESS, // CMP_LESS
-        Diligent::COMPARISON_FUNC_LESS_EQUAL, // CMP_LESSEQUAL
-        Diligent::COMPARISON_FUNC_GREATER, // CMP_GREATER
-        Diligent::COMPARISON_FUNC_GREATER_EQUAL // CMP_GREATEREQUAL
-    };
-
     static const bool isBlendEnabled[] = {
         false, // BLEND_REPLACE
         true, // BLEND_ADD
@@ -534,6 +539,7 @@ void PipelineState::CreateGPU(const GraphicsPipelineStateDesc& desc)
     Diligent::IRenderDevice* renderDevice = renderDevice_->GetRenderDevice();
     const bool isOpenGL = renderDevice_->GetBackend() == RenderBackend::OpenGL;
     const bool hasSeparableShaderPrograms = renderDevice->GetDeviceInfo().Features.SeparablePrograms;
+    
     URHO3D_ASSERT(isOpenGL || hasSeparableShaderPrograms);
     const ea::span<const InputLayoutElementDesc> vertexElements{
         desc.inputLayout_.elements_.data(), desc.inputLayout_.size_};
@@ -626,29 +632,41 @@ void PipelineState::CreateGPU(const GraphicsPipelineStateDesc& desc)
 
     ci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
     ci.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = desc.depthWriteEnabled_;
-    ci.GraphicsPipeline.DepthStencilDesc.DepthFunc = comparisonFunction[desc.depthCompareFunction_];
+    ci.GraphicsPipeline.DepthStencilDesc.DepthFunc = GetComparisonFunction(renderDevice_->GetDepthParams().GetDepthCompare(desc.depthCompareFunction_));
     ci.GraphicsPipeline.DepthStencilDesc.StencilEnable = desc.stencilTestEnabled_;
     ci.GraphicsPipeline.DepthStencilDesc.StencilReadMask = desc.stencilCompareMask_;
     ci.GraphicsPipeline.DepthStencilDesc.StencilWriteMask = desc.stencilWriteMask_;
     ci.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFailOp = stencilOp[desc.stencilOperationOnStencilFailed_];
     ci.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilDepthFailOp = stencilOp[desc.stencilOperationOnDepthFailed_];
     ci.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilPassOp = stencilOp[desc.stencilOperationOnPassed_];
-    ci.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFunc = comparisonFunction[desc.stencilCompareFunction_];
+    ci.GraphicsPipeline.DepthStencilDesc.FrontFace.StencilFunc = GetComparisonFunction(desc.stencilCompareFunction_);
     ci.GraphicsPipeline.DepthStencilDesc.BackFace.StencilFailOp = stencilOp[desc.stencilOperationOnStencilFailed_];
     ci.GraphicsPipeline.DepthStencilDesc.BackFace.StencilDepthFailOp = stencilOp[desc.stencilOperationOnDepthFailed_];
     ci.GraphicsPipeline.DepthStencilDesc.BackFace.StencilPassOp = stencilOp[desc.stencilOperationOnPassed_];
-    ci.GraphicsPipeline.DepthStencilDesc.BackFace.StencilFunc = comparisonFunction[desc.stencilCompareFunction_];
+    ci.GraphicsPipeline.DepthStencilDesc.BackFace.StencilFunc = GetComparisonFunction(desc.stencilCompareFunction_);
 
-    unsigned depthBits = 24;
-    if (ci.GraphicsPipeline.DSVFormat == Diligent::TEX_FORMAT_D16_UNORM)
-        depthBits = 16;
-    const int scaledDepthBias = isOpenGL ? 0 : (int)(desc.constantDepthBias_ * (1 << depthBits));
+    int scaledDepthBias = 0;
+    float slopeScaledDepthBias = desc.slopeScaledDepthBias_;
+
+    // Apply hardware constant biasing if supported
+    if (renderDevice_->GetDepthParams().useHwConstantDepthBias_) {
+        unsigned depthBits = 24;
+        if (ci.GraphicsPipeline.DSVFormat == Diligent::TEX_FORMAT_D16_UNORM)
+            depthBits = 16;
+        scaledDepthBias = (int)(desc.constantDepthBias_ * (1 << depthBits));
+    }
+
+    // Invert biasing directions for reversed depth
+    if (renderDevice_->GetDepthParams().reversed_) {
+        scaledDepthBias *= -1;
+        slopeScaledDepthBias *= -1.0f;
+    }
 
     ci.GraphicsPipeline.RasterizerDesc.FillMode = fillMode[desc.fillMode_];
     ci.GraphicsPipeline.RasterizerDesc.CullMode = cullMode[desc.cullMode_];
     ci.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = false;
     ci.GraphicsPipeline.RasterizerDesc.DepthBias = scaledDepthBias;
-    ci.GraphicsPipeline.RasterizerDesc.SlopeScaledDepthBias = desc.slopeScaledDepthBias_;
+    ci.GraphicsPipeline.RasterizerDesc.SlopeScaledDepthBias = slopeScaledDepthBias;
     ci.GraphicsPipeline.RasterizerDesc.DepthClipEnable = true;
     ci.GraphicsPipeline.RasterizerDesc.ScissorEnable = desc.scissorTestEnabled_;
     ci.GraphicsPipeline.RasterizerDesc.AntialiasedLineEnable = !isOpenGL && desc.lineAntiAlias_;

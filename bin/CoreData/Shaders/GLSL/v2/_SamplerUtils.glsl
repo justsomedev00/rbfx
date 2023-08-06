@@ -5,6 +5,7 @@
     #error Include _Config.glsl before _SamplerUtils.glsl
 #endif
 
+
 #ifdef URHO3D_PIXEL_SHADER
 
 /// Convert sampled value from sNormal to normal in tangent space.
@@ -27,13 +28,14 @@ float ReconstructDepth(float hwDepth)
 {
 #ifdef URHO3D_XR
     int eyeIdx = vInstID;
-    float depth = cDepthReconstruct[eyeIdx].y / (hwDepth - cDepthReconstruct[eyeIdx].x);
-    return cDepthReconstruct[eyeIdx].z != 0.0 ? hwDepth : depth;
+    vec4 depthReconstruct = cDepthReconstruct[eyeIdx];
 #else
-    // May be undefined for orthographic projection
-    float depth = cDepthReconstruct.y / (hwDepth - cDepthReconstruct.x);
-    return cDepthReconstruct.z != 0.0 ? hwDepth : depth;
+    vec4 depthReconstruct = cDepthReconstruct;
 #endif
+    float fwDepth = HwDepthToForwardDepth(hwDepth);
+    // May be undefined for orthographic projection
+    float linearDepth = depthReconstruct.y / (fwDepth - depthReconstruct.x);
+    return depthReconstruct.z != 0.0 ? fwDepth : linearDepth;
 }
 
 #endif // URHO3D_PIXEL_SHADER

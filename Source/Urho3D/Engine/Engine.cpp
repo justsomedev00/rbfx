@@ -376,7 +376,14 @@ bool Engine::Initialize(const StringVariantMap& applicationParameters, const Str
         graphicsSettings.validateShaders_ = GetParameter(EP_VALIDATE_SHADERS).GetBool();
         graphicsSettings.discardShaderCache_ = GetParameter(EP_DISCARD_SHADER_CACHE).GetBool();
         graphicsSettings.cacheShaders_ = GetParameter(EP_SAVE_SHADER_CACHE).GetBool();
+        graphicsSettings.reversedDepth_ = GetParameter(EP_DEPTH_REVERSED).GetBool();
 
+        const auto& depthFormat = GetParameter(EP_DEPTH_FORMAT).GetString();
+        graphicsSettings.preferFloatDepth_ =
+            (depthFormat == "float") ? true :
+            (depthFormat == "unorm") ? false :
+            (graphicsSettings.reversedDepth_);
+        
         WindowSettings windowSettings;
         const int width = GetParameter(EP_WINDOW_WIDTH).GetInt();
         const int height = GetParameter(EP_WINDOW_HEIGHT).GetInt();
@@ -1090,6 +1097,10 @@ void Engine::DefineParameters(CLI::App& commandLine, StringVariantMap& enginePar
     addFlag("--d3d12", EP_RENDER_BACKEND, static_cast<int>(RenderBackend::D3D12), "Use Direct3D12 rendering backend");
     addFlag("--opengl", EP_RENDER_BACKEND, static_cast<int>(RenderBackend::OpenGL), "Use OpenGL rendering backend");
     addFlag("--vulkan", EP_RENDER_BACKEND, static_cast<int>(RenderBackend::Vulkan), "Use Vulkan rendering backend");
+
+    addFlag("--reversed-depth", EP_DEPTH_REVERSED, true, "Use reversed depth range for rendering");
+    addFlag("--prefer-float-depth", EP_DEPTH_FORMAT, "float", "Prefer floating-point depth formats (default for reversed depth)");
+    addFlag("--prefer-unorm-depth", EP_DEPTH_FORMAT, "unorm", "Prefer normalized integer depth formats (default for forward depth)");
 }
 #endif
 
@@ -1139,6 +1150,8 @@ void Engine::PopulateDefaultParameters()
     engineParameters_->DefineVariable(EP_AUTOLOAD_PATHS, "Autoload").CommandLinePriority();
     engineParameters_->DefineVariable(EP_CONFIG_NAME, "EngineParameters.json");
     engineParameters_->DefineVariable(EP_BORDERLESS, true).Overridable();
+    engineParameters_->DefineVariable(EP_DEPTH_FORMAT).Overridable();
+    engineParameters_->DefineVariable(EP_DEPTH_REVERSED, false).Overridable();
     engineParameters_->DefineVariable(EP_DISCARD_SHADER_CACHE, false);
     engineParameters_->DefineVariable(EP_ENGINE_AUTO_LOAD_SCRIPTS, false);
     engineParameters_->DefineVariable(EP_ENGINE_CLI_PARAMETERS, true);

@@ -445,25 +445,46 @@ ea::shared_ptr<void> CreateGLContext(SDL_Window* window)
     return glContext ? ea::shared_ptr<void>(glContext, SDL_GL_DeleteContext) : nullptr;
 }
 
-TextureFormat SelectDefaultDepthFormat(Diligent::IRenderDevice* device, bool needStencil)
+TextureFormat SelectDefaultDepthFormat(Diligent::IRenderDevice* device, bool needStencil, bool fpDepth)
 {
     static const TextureFormat depthStencilFormats[] = {
         TextureFormat::TEX_FORMAT_D24_UNORM_S8_UINT,
         TextureFormat::TEX_FORMAT_D32_FLOAT_S8X24_UINT,
         TextureFormat::TEX_FORMAT_D32_FLOAT,
         TextureFormat::TEX_FORMAT_D16_UNORM,
+        TextureFormat::TEX_FORMAT_UNKNOWN
     };
     static const TextureFormat depthOnlyFormats[] = {
         TextureFormat::TEX_FORMAT_D24_UNORM_S8_UINT,
         TextureFormat::TEX_FORMAT_D32_FLOAT,
         TextureFormat::TEX_FORMAT_D32_FLOAT_S8X24_UINT,
         TextureFormat::TEX_FORMAT_D16_UNORM,
+        TextureFormat::TEX_FORMAT_UNKNOWN
+    };
+    static const TextureFormat depthStencilFormatsFP[] = {
+       TextureFormat::TEX_FORMAT_D32_FLOAT_S8X24_UINT,
+       TextureFormat::TEX_FORMAT_D24_UNORM_S8_UINT,
+       TextureFormat::TEX_FORMAT_D32_FLOAT,
+       TextureFormat::TEX_FORMAT_D16_UNORM,
+       TextureFormat::TEX_FORMAT_UNKNOWN
+    };
+    static const TextureFormat depthOnlyFormatsFP[] = {
+        TextureFormat::TEX_FORMAT_D32_FLOAT,
+        TextureFormat::TEX_FORMAT_D32_FLOAT_S8X24_UINT,
+        TextureFormat::TEX_FORMAT_D24_UNORM_S8_UINT,
+        TextureFormat::TEX_FORMAT_D16_UNORM,
+        TextureFormat::TEX_FORMAT_UNKNOWN
     };
 
-    for (TextureFormat format : (needStencil ? depthStencilFormats : depthOnlyFormats))
+    const TextureFormat* formats =
+        (needStencil ?
+            ((fpDepth) ? depthStencilFormatsFP : depthStencilFormats) :
+            ((fpDepth) ? depthOnlyFormatsFP : depthOnlyFormats));
+
+    for (int i = 0; formats[i] != TextureFormat::TEX_FORMAT_UNKNOWN; ++i)
     {
-        if (device->GetTextureFormatInfoExt(format).BindFlags & Diligent::BIND_DEPTH_STENCIL)
-            return format;
+        if (device->GetTextureFormatInfoExt(formats[i]).BindFlags & Diligent::BIND_DEPTH_STENCIL)
+            return formats[i];
     }
 
     URHO3D_ASSERT(false);
@@ -885,6 +906,34 @@ void RenderDevice::InitializeDevice()
 
     // Don't bother with deducing the format for now
     const bool isBGRA = false;
+    const bool isOpenGL = deviceSettings_.backend_ == RenderBackend::OpenGL;
+
+    // Setup depth mode parameters
+    if (deviceSettings_.reversedDepth_)
+    {
+        depthParams_.reversed_ = true;
+        // Hardware constant depth biasing is disabled with reversed fdepth. The
+        // results are inconsistent with forward depth biasing due to the difference in
+        // depth value distributions and how floating point depth biasing is performed.
+        // Instead emulate constant depth biasing through camera transform like in OpenGL. 
+        depthParams_.useHwConstantDepthBias_ = false;
+        depthParams_.zNdcZeroToOne_ = true;
+        depthParams_.hwDepthScale_ = -1.0f;
+        depthParams_.hwDepthOffset_ = 1.0f;
+        depthParams_.hwZNdcScale_ = 1.0f;
+        depthParams_.hwZNdcOffset_ = 0.0f;
+    }
+    else
+    {
+        depthParams_.reversed_ = false;
+        depthParams_.useHwConstantDepthBias_ = !isOpenGL;
+        depthParams_.zNdcZeroToOne_ = !isOpenGL;
+        depthParams_.hwDepthScale_ = 1.0f;
+        depthParams_.hwDepthOffset_ = 0.0;
+        depthParams_.hwZNdcScale_ = isOpenGL ? 2.0f : 1.0f;
+        depthParams_.hwZNdcOffset_ = isOpenGL ? -1.0f : 0.0f;
+    }
+
 
     Diligent::SwapChainDesc swapChainDesc{};
     swapChainDesc.ColorBufferFormat = colorFormats[isBGRA][windowSettings_.sRGB_];
@@ -910,7 +959,7 @@ void RenderDevice::InitializeDevice()
         createInfo.AdapterId = FindBestAdapter(factory_, createInfo.GraphicsAPIVersion, deviceSettings_.adapterId_);
         createInfo.EnableValidation = true;
         createInfo.D3D11ValidationFlags = Diligent::D3D11_VALIDATION_FLAG_VERIFY_COMMITTED_RESOURCE_RELEVANCE;
-
+        
         factoryD3D11_->CreateDeviceAndContextsD3D11(createInfo, &renderDevice_, &deviceContext_);
 
         Diligent::RefCntAutoPtr<Diligent::ISwapChain> nativeSwapChain;
@@ -995,6 +1044,7 @@ void RenderDevice::InitializeDevice()
     {
         Diligent::EngineGLCreateInfo createInfo;
         createInfo.AdapterId = FindBestAdapter(factory_, createInfo.GraphicsAPIVersion, deviceSettings_.adapterId_);
+        createInfo.ZeroToOneNDZ = depthParams_.zNdcZeroToOne_;
 
         factoryOpenGL_->AttachToActiveGLContext(createInfo, &renderDevice_, &deviceContext_);
 
@@ -1010,8 +1060,8 @@ void RenderDevice::InitializeDevice()
         auto& defaultAllocator = Diligent::DefaultRawMemoryAllocator::GetAllocator();
         swapChainGL_ = NEW_RC_OBJ(defaultAllocator, "ProxySwapChainGL instance", ProxySwapChainGL)(
             renderDevice_, deviceContext_, swapChainDesc, window_.get());
-        defaultDepthStencilFormat_ = swapChainGL_->GetDesc().DepthBufferFormat;
-        defaultDepthFormat_ = SelectDefaultDepthFormat(renderDevice_, false);
+        defaultDepthStencilFormat_ = SelectDefaultDepthFormat(renderDevice_, true, deviceSettings_.preferFloatDepth_);
+        defaultDepthFormat_ = SelectDefaultDepthFormat(renderDevice_, false, deviceSettings_.preferFloatDepth_);
         deviceContextGL_->SetSwapChain(swapChainGL_);
 
         swapChain_ = swapChainGL_;
@@ -1026,8 +1076,8 @@ void RenderDevice::InitializeDevice()
 
 void RenderDevice::InitializeMultiSampleSwapChain(Diligent::ISwapChain* nativeSwapChain)
 {
-    defaultDepthStencilFormat_ = SelectDefaultDepthFormat(renderDevice_, true);
-    defaultDepthFormat_ = SelectDefaultDepthFormat(renderDevice_, false);
+    defaultDepthStencilFormat_ = SelectDefaultDepthFormat(renderDevice_, true, deviceSettings_.preferFloatDepth_);
+    defaultDepthFormat_ = SelectDefaultDepthFormat(renderDevice_, false, deviceSettings_.preferFloatDepth_);
 
     const TextureFormat colorFormat = nativeSwapChain->GetDesc().ColorBufferFormat;
     const unsigned multiSample = GetSupportedMultiSample(colorFormat, windowSettings_.multiSample_);
@@ -1806,5 +1856,6 @@ void RenderDevice::ReleaseDefaultObjects()
     defaultTextures_ = {};
     renderPool_->Invalidate();
 }
+
 
 } // namespace Urho3D
