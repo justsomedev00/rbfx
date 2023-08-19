@@ -56,7 +56,15 @@
 
 #include <EASTL/optional.h>
 
+#include <SDL.h>
+
 #include "../DebugNew.h"
+
+#if URHO3D_PLATFORM_ANDROID
+// TODO: This is a hack to get EGLConfig in SDL2.
+// Replace with SDL_EGL_GetCurrentEGLConfig in SDL3.
+extern "C" EGLConfig SDL_EGL_GetConfig();
+#endif
 
 namespace Urho3D
 {
@@ -103,12 +111,19 @@ const char* GetBackendExtensionName(RenderBackend backend)
 {
     switch (backend)
     {
+#if D3D11_SUPPORTED
     case RenderBackend::D3D11: return XR_KHR_D3D11_ENABLE_EXTENSION_NAME;
+#endif
+#if D3D12_SUPPORTED
     case RenderBackend::D3D12: return XR_KHR_D3D12_ENABLE_EXTENSION_NAME;
+#endif
+#if VULKAN_SUPPORTED
     case RenderBackend::Vulkan: return XR_KHR_VULKAN_ENABLE_EXTENSION_NAME;
+#endif
 #if GLES_SUPPORTED
     case RenderBackend::OpenGL: return XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME;
-#else
+#endif
+#if GL_SUPPORTED
     case RenderBackend::OpenGL: return XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
 #endif
     default: return "";
@@ -129,6 +144,17 @@ XrInstancePtr CreateInstanceXR(
     info.enabledExtensionCount = extensionNames.size();
     info.enabledExtensionNames = extensionNames.data();
 
+#if URHO3D_PLATFORM_ANDROID
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    JavaVM* vm = nullptr;
+    env->GetJavaVM(&vm);
+
+    XrInstanceCreateInfoAndroidKHR androidInfo = {XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
+    androidInfo.applicationVM = vm;
+    androidInfo.applicationActivity = SDL_AndroidGetActivity();
+    info.next = &androidInfo;
+#endif
+
     XrInstance instance;
     if (!URHO3D_CHECK_OPENXR(xrCreateInstance(&info, &instance)))
         return nullptr;
@@ -137,8 +163,8 @@ XrInstancePtr CreateInstanceXR(
 
     const auto deleter = [](XrInstance instance)
     {
-        UnloadOpenXRAPI();
         xrDestroyInstance(instance);
+        UnloadOpenXRAPI();
     };
     return XrInstancePtr(instance, deleter);
 }
@@ -284,7 +310,7 @@ ea::vector<int64_t> GetSwapChainFormats(XrSession session)
 /// https://developer.oculus.com/resources/color-management-guide/
 bool IsFallbackColorFormat(TextureFormat format)
 {
-    return SetTextureFormatSRGB(format, true) != format;
+    return SetTextureFormatSRGB(format, false) != format;
 }
 
 /// 16-bit depth is just not enough.
@@ -393,13 +419,21 @@ XrSessionPtr CreateSessionXR(RenderDevice* renderDevice, XrInstance instance, Xr
         binding.queueIndex = 0; // TODO(xr): Revisit this place
         sessionCreateInfo.next = &binding;
 
+        VkPhysicalDevice requiredPhysicalDevice{};
+        xrGetVulkanGraphicsDeviceKHR(instance, system, binding.instance, &requiredPhysicalDevice);
+        if (requiredPhysicalDevice != binding.physicalDevice)
+        {
+            URHO3D_LOGERROR("OpenXR cannot use current VkPhysicalDevice");
+            return nullptr;
+        }
+
         if (!URHO3D_CHECK_OPENXR(xrCreateSession(instance, &sessionCreateInfo, &session)))
             return nullptr;
 
         break;
     }
 #endif
-#if GL_SUPPORTED
+#if GL_SUPPORTED && URHO3D_PLATFORM_WINDOWS
     case RenderBackend::OpenGL:
     {
         XrGraphicsRequirementsOpenGLKHR requisite = {XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR};
@@ -410,6 +444,30 @@ XrSessionPtr CreateSessionXR(RenderDevice* renderDevice, XrInstance instance, Xr
         XrGraphicsBindingOpenGLWin32KHR binding = {XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR};
         binding.hDC = wglGetCurrentDC();
         binding.hGLRC = wglGetCurrentContext();
+        sessionCreateInfo.next = &binding;
+    #else
+        URHO3D_ASSERTLOG(false, "OpenXR is not implemented for this platform");
+        return nullptr;
+    #endif
+
+        if (!URHO3D_CHECK_OPENXR(xrCreateSession(instance, &sessionCreateInfo, &session)))
+            return nullptr;
+
+        break;
+    }
+#endif
+#if GLES_SUPPORTED && URHO3D_PLATFORM_ANDROID
+    case RenderBackend::OpenGL:
+    {
+        XrGraphicsRequirementsOpenGLESKHR requisite = {XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR};
+        if (!URHO3D_CHECK_OPENXR(xrGetOpenGLESGraphicsRequirementsKHR(instance, system, &requisite)))
+            return nullptr;
+
+    #if URHO3D_PLATFORM_ANDROID
+        XrGraphicsBindingOpenGLESAndroidKHR binding = {XR_TYPE_GRAPHICS_BINDING_OPENGL_ES_ANDROID_KHR};
+        binding.display = eglGetCurrentDisplay();
+        binding.config = SDL_EGL_GetConfig();
+        binding.context = eglGetCurrentContext();
         sessionCreateInfo.next = &binding;
     #else
         URHO3D_ASSERTLOG(false, "OpenXR is not implemented for this platform");
@@ -439,7 +497,7 @@ public:
         textureSize_ = arraySize_ == 1 ? eyeSize * IntVector2{2, 1} : eyeSize;
 
         XrSwapchainCreateInfo swapInfo = {XR_TYPE_SWAPCHAIN_CREATE_INFO};
-        swapInfo.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+        //swapInfo.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
 
         if (IsDepthTextureFormat(format))
             swapInfo.usageFlags |= XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -483,6 +541,8 @@ public:
         for (Texture2D* texture : textures_)
             texture->Destroy();
     }
+
+    const T& GetImageXR(unsigned index) const { return images_[index]; }
 
 protected:
     ea::vector<T> images_;
@@ -600,6 +660,33 @@ public:
 };
 #endif
 
+#if GLES_SUPPORTED
+class OpenXRSwapChainGLES : public OpenXRSwapChainBase<XrSwapchainImageOpenGLESKHR, XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR>
+{
+public:
+    using BaseClass = OpenXRSwapChainBase<XrSwapchainImageOpenGLESKHR, XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR>;
+
+    OpenXRSwapChainGLES(Context* context, XrSession session, TextureFormat format, int64_t internalFormat,
+        const IntVector2& eyeSize, int msaaLevel)
+        : BaseClass(session, format, internalFormat, eyeSize, msaaLevel)
+    {
+        auto renderDevice = context->GetSubsystem<RenderDevice>();
+
+        const bool isDepth = IsDepthTextureFormat(format);
+        const unsigned numImages = images_.size();
+        textures_.resize(numImages);
+        for (unsigned i = 0; i < numImages; ++i)
+        {
+            URHO3D_ASSERT(arraySize_ == 1);
+
+            textures_[i] = MakeShared<Texture2D>(context);
+            textures_[i]->CreateFromGLTexture(images_[i].image, TextureType::Texture2D,
+                isDepth ? TextureFlag::BindDepthStencil : TextureFlag::BindRenderTarget, format, arraySize_, msaaLevel);
+        }
+    }
+};
+#endif
+
 OpenXRSwapChainPtr CreateSwapChainXR(Context* context, XrSession session, TextureFormat format, int64_t internalFormat,
     const IntVector2& eyeSize, int msaaLevel)
 {
@@ -626,6 +713,11 @@ OpenXRSwapChainPtr CreateSwapChainXR(Context* context, XrSession session, Textur
 #if GL_SUPPORTED
     case RenderBackend::OpenGL:
         result = ea::make_shared<OpenXRSwapChainGL>(context, session, format, internalFormat, eyeSize, msaaLevel);
+        break;
+#endif
+#if GLES_SUPPORTED
+    case RenderBackend::OpenGL:
+        result = ea::make_shared<OpenXRSwapChainGLES>(context, session, format, internalFormat, eyeSize, msaaLevel);
         break;
 #endif
     default: URHO3D_ASSERTLOG(false, "OpenXR is not implemented for this backend"); break;
@@ -762,6 +854,19 @@ bool OpenXR::InitializeSystem(RenderBackend backend)
         URHO3D_LOGERROR("OpenXR is already initialized");
         return false;
     }
+
+    InitializeOpenXRLoader();
+
+#if URHO3D_PLATFORM_ANDROID
+    JNIEnv* env = (JNIEnv*)SDL_AndroidGetJNIEnv();
+    JavaVM* vm = nullptr;
+    env->GetJavaVM(&vm);
+
+    XrLoaderInitInfoAndroidKHR loaderInitInfo = {XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR};
+    loaderInitInfo.applicationVM = vm;
+    loaderInitInfo.applicationContext = SDL_AndroidGetActivity();
+    xrInitializeLoaderKHR((const XrLoaderInitInfoBaseHeaderKHR*)&loaderInitInfo);
+#endif
 
     supportedExtensions_ = EnumerateExtensionsXR();
     if (!IsExtensionSupported(supportedExtensions_, GetBackendExtensionName(backend)))

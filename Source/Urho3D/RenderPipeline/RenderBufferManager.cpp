@@ -522,11 +522,11 @@ void RenderBufferManager::OnRenderBegin(const CommonFrameInfo& frameInfo)
         isColorFormatMatching && isMultiSampleMatching && isFilterMatching && isColorUsageMatching;
 
     const bool needSecondaryBuffer = frameSettings_.supportColorReadWrite_;
-    const bool needSubstituteDepthBuffer = !isMultiSampleMatching || !outputDepthStencil.has_value()
+    const bool needSubstituteDepthBuffer = true || !isMultiSampleMatching || !outputDepthStencil.has_value()
         || ((needSecondaryBuffer || !isOutputMatching) && outputDepthStencil.value() == nullptr)
         || (settings_.readableDepth_ && (!outputHasReadableDepth || !isSimpleTextureOutput))
         || (settings_.stencilBuffer_ && !outputHasStencil);
-    const bool needSubstitutePrimaryBuffer = !isOutputMatching || needSubstituteDepthBuffer;
+    const bool needSubstitutePrimaryBuffer = true || !isOutputMatching || needSubstituteDepthBuffer;
 
     // Allocate substitute buffers if necessary
     if (needSubstitutePrimaryBuffer && !substituteRenderBuffers_[0])

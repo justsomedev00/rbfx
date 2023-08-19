@@ -185,6 +185,10 @@ void SamplesManager::Setup()
     engineParameters_[EP_RESOURCE_PATHS] = "CoreData;Data";
     engineParameters_[EP_ORIENTATIONS] = "LandscapeLeft LandscapeRight Portrait";
     engineParameters_[EP_WINDOW_RESIZABLE] = true;
+    engineParameters_[EP_SHADER_POLICY] = (int)ShaderTranslationPolicy::Optimize;
+    engineParameters_[EP_DISCARD_SHADER_CACHE] = true;
+    engineParameters_[EP_XR] = true;
+    //engineParameters_[EP_RENDER_BACKEND] = (int)RenderBackend::Vulkan;
     if (!engineParameters_.contains(EP_RESOURCE_PREFIX_PATHS))
     {
         if (GetPlatform() == PlatformId::MacOS ||
@@ -424,6 +428,7 @@ void SamplesManager::Start()
 #if URHO3D_XR
     RegisterSample<VRSimple>();
 #endif
+    commandLineArgs_ = {"VRSimple"};
     if (!commandLineArgs_.empty())
         StartSample(commandLineArgs_[0]);
 }

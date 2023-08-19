@@ -249,7 +249,8 @@ static TextureDesc GetTextureDescFromGLHandle(GLContextState& GLState, TextureDe
                                 "' specified by TextureDesc struct does not match GL texture internal format (", GlFormat, ")");
         }
 
-        TexDesc.Format = GLInternalTexFormatToTexFormat(GlFormat);
+        if (TexDesc.Format == TEX_FORMAT_UNKNOWN)
+            TexDesc.Format = GLInternalTexFormatToTexFormat(GlFormat);
     }
     else
     {

@@ -8,15 +8,27 @@
 
 #include <EASTL/unordered_map.h>
 
+#if URHO3D_PLATFORM_ANDROID
+    #include <dlfcn.h>
+#endif
+
 #include "Urho3D/DebugNew.h"
 
 #define URHO3D_DEFINE_OPENXR_API(fn) PFN_##fn fn;
-#define URHO3D_LOAD_OPENXR_API(fn) xrGetInstanceProcAddr(instance, #fn, (PFN_xrVoidFunction*)&fn);
+#define URHO3D_LOAD_OPENXR_API(fn) xrGetInstanceProcAddrFn(instance, #fn, (PFN_xrVoidFunction*)&fn);
 #define URHO3D_UNLOAD_OPENXR_API(fn) fn = nullptr;
 
 namespace Urho3D
 {
 
+namespace
+{
+
+PFN_xrGetInstanceProcAddr xrGetInstanceProcAddrFn = nullptr;
+
+}
+
+URHO3D_ENUMERATE_OPENXR_API_LOADER(URHO3D_DEFINE_OPENXR_API)
 URHO3D_ENUMERATE_OPENXR_API(URHO3D_DEFINE_OPENXR_API)
 
 const char* xrGetErrorStr(XrResult result)
@@ -114,6 +126,19 @@ bool xrCheckResult(XrResult result, const char* expr, const char* file, int line
     URHO3D_LOGERROR(
         "OpenXR error {}\nexpr: {}\nfile: {}\nline: {}\nfunc: {}", xrGetErrorStr(result), expr, file, line, func);
     return false;
+}
+
+void InitializeOpenXRLoader()
+{
+#if URHO3D_PLATFORM_ANDROID
+    void* handle = dlopen("libopenxr_loader.so", RTLD_LAZY);
+    xrGetInstanceProcAddrFn = (PFN_xrGetInstanceProcAddr)dlsym(handle, "xrGetInstanceProcAddr");
+#else
+    xrGetInstanceProcAddrFn = &xrGetInstanceProcAddr;
+#endif
+
+    XrInstance instance{};
+    URHO3D_ENUMERATE_OPENXR_API_LOADER(URHO3D_LOAD_OPENXR_API)
 }
 
 void LoadOpenXRAPI(XrInstance instance)
