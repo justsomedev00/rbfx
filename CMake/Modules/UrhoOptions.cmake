@@ -213,6 +213,7 @@ cmake_dependent_option(URHO3D_PLUGINS            "Enable plugins"               
 cmake_dependent_option(URHO3D_THREADING          "Enable multithreading"                                 ${URHO3D_ENABLE_ALL} "NOT EMSCRIPTEN"                       OFF)
 option                (URHO3D_WEBP               "WebP support enabled"                                  ${URHO3D_ENABLE_ALL}                                    )
 cmake_dependent_option(URHO3D_TESTING            "Enable unit tests"                                     OFF                  "NOT EMSCRIPTEN;NOT MOBILE;NOT UWP"    OFF)
+cmake_dependent_option(URHO3D_VISUAL_TESTING     "Enable visual tests"                                   OFF                  "NOT EMSCRIPTEN;NOT MOBILE;NOT UWP"    OFF)
 option                (URHO3D_PACKAGING          "Enable *.pak file creation"                            OFF                                                     )
 # Web
 cmake_dependent_option(EMSCRIPTEN_WASM           "Use wasm instead of asm.js"                            ON                   "EMSCRIPTEN"                           OFF)

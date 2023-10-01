@@ -126,6 +126,9 @@ if (URHO3D_XR)
     endif ()
     define_engine_source_files (XR)
 endif ()
+
+define_engine_source_files(VisualTest)
+
 # Group source code in VS solution
 group_sources()
 

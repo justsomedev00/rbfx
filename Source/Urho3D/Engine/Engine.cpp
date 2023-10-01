@@ -100,6 +100,10 @@
     #include "Urho3D/XR/OpenXR.h"
 #endif
 
+#ifdef URHO3D_VISUAL_TESTING
+#include "Urho3D/VisualTest/VisualTest.h"
+#endif
+
 #ifdef URHO3D_PLATFORM_WEB
 #include <emscripten/emscripten.h>
 #include <emscripten/bind.h>
@@ -194,6 +198,11 @@ Engine::Engine(Context* context) :
     // Register UI library object factories before creation of subsystem. This is not done inside subsystem because
     // there may exist multiple instances of UI.
     RegisterUILibrary(context_);
+
+#ifdef URHO3D_VISUAL_TESTING
+    // Register visual test library
+    RegisterVisualTestLibrary(context_);
+#endif
 
 #ifdef URHO3D_GLOW
     // Light baker needs only one class so far, so register it directly.

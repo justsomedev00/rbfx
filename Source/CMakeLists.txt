@@ -36,6 +36,7 @@ add_subdirectory (Urho3D)
 add_subdirectory (Tools)
 add_subdirectory (Samples)
 add_subdirectory (Tests)
+add_subdirectory (VisualTests)
 
 # Check options outside so user can add Player and/or Editor explicitly afterwards.
 if (URHO3D_PLAYER)

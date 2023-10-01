@@ -134,3 +134,5 @@ packaging/nuget/local-repository/
 packaging/nuget/out/
 packaging/nuget/SDK-*
 packaging/nuget/rbfx-*.zip
+/bin/Data/Scenes/Default.scene
+/bin/Data/Default.assetpipeline
