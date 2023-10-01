@@ -27,8 +27,7 @@ half3 DecodeNormal(half4 normalInput)
 float ReconstructDepth(float hwDepth)
 {
 #ifdef URHO3D_XR
-    int eyeIdx = vInstID;
-    vec4 depthReconstruct = cDepthReconstruct[eyeIdx];
+    vec4 depthReconstruct = cDepthReconstruct[vInstID & 1];
 #else
     vec4 depthReconstruct = cDepthReconstruct;
 #endif
